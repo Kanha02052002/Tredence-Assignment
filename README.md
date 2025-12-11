@@ -1,4 +1,3 @@
-```markdown
 # Minimal Workflow Engine (FastAPI + Python)
 
 This project implements a minimal, yet functional, agent workflow engine inspired by LangGraph.
@@ -24,6 +23,7 @@ How to run
    uvicorn main:app --reload
 
 Endpoints
+```
 - POST /graph/create
   Request:
   {
@@ -43,7 +43,8 @@ Endpoints
     "start_node_id": "extract"
   }
   Response: { "graph_id": "<uuid>" }
-
+```
+```
 - POST /graph/run
   Request:
   {
@@ -57,7 +58,7 @@ Endpoints
 
 - GET /graph/state/{run_id}
   Returns current state, status, and log for the given run.
-
+```
 Sample workflow implemented
 Code Review Mini-Agent:
 - extract_functions -> check_complexity -> detect_issues -> suggest_improvements -> (loop to check_complexity if quality_score < 0.9) -> finalize
@@ -68,5 +69,3 @@ Notes / possible improvements
 - Add richer edge definitions (multiple explicit conditional edges) and a graph schema UI.
 - Add timeout, concurrency control, and cancellation for running workflows.
 - Add more sophisticated node I/O validation and types per node.
-
-```
