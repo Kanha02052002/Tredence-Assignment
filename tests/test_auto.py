@@ -9,50 +9,37 @@ from tools.registry import ToolRegistry
 from engine.core import GraphEngine
 from engine.models import CodeReviewState
 
-# Use the sample agent utilities
+
 from agents import sample_agent
 
 
 def make_sample_code(todo_count: int = 2, lines_per_fn: int = 10) -> str:
-    """
-    Helper to create synthetic code that will trigger issues and
-    produce measurable complexity/quality scores.
-    """
     parts = []
     for i in range(3):
         parts.append(f"def func_{i}(x):")
         for j in range(lines_per_fn):
-            parts.append("    x = x + 1")
+            parts.append("x = x + 1")
         if i < todo_count:
-            parts.append("    # TODO: improve performance")
-        parts.append("")  # blank line between functions
+            parts.append("# TODO: improve performance")
+        parts.append("")
     return "\n".join(parts)
 
 
 @pytest.mark.asyncio
 async def test_engine_run_direct():
-    """
-    Directly exercise GraphEngine without HTTP layer.
-    Verifies that the engine runs the code-review mini-agent, loops as needed,
-    and completes with finalized state and suggestions.
-    """
-    # Prepare a fresh registry and engine instance
     registry = ToolRegistry()
     engine = GraphEngine(tool_registry=registry)
 
-    # Register tools (async functions)
     registry.register_tool("complexity_estimator", sample_agent.complexity_estimator)
     registry.register_tool("issue_detector", sample_agent.issue_detector)
     registry.register_tool("suggestion_generator", sample_agent.suggestion_generator)
 
-    # Register node functions in the engine
     engine.register_node("extract_functions", sample_agent.extract_functions)
     engine.register_node("check_complexity", sample_agent.check_complexity)
     engine.register_node("detect_issues", sample_agent.detect_issues)
     engine.register_node("suggest_improvements", sample_agent.suggest_improvements)
     engine.register_node("finalize", sample_agent.finalize)
 
-    # Create graph
     nodes = {
         "extract": "extract_functions",
         "check": "check_complexity",
@@ -68,38 +55,22 @@ async def test_engine_run_direct():
     }
     graph_id = engine.create_graph(nodes=nodes, edges=edges, start_node_id="extract")
 
-    # Prepare initial state (intentionally low quality to force looping)
     initial_code = make_sample_code(todo_count=3, lines_per_fn=60)
     state = CodeReviewState(code_text=initial_code)
-
-    # Create run placeholder
     run_id = engine.create_run_placeholder(graph_id)
-
-    # Execute the graph (async)
     final_state, log = await engine.execute_graph(graph_id, state, run_id=run_id, max_steps=200)
 
-    # Assertions: run should complete, be finalized, have suggestions and acceptable quality
     run_record = engine.get_run(run_id)
     assert run_record is not None
     assert run_record["status"] == "completed"
     assert final_state.metadata.get("finalized", False) is True
     assert isinstance(final_state.suggestions, list)
     assert len(final_state.suggestions) > 0
-    # Quality threshold used by the sample agent to stop looping is 0.9
     assert final_state.quality_score >= 0.9 or final_state.metadata.get("issues_found", 0) == 0
 
 
 def test_api_graph_create_run_state():
-    """
-    Smoke test of FastAPI endpoints:
-    - POST /graph/create
-    - POST /graph/run
-    - GET /graph/state/{run_id}
-    This test uses the app instance exported by main.py (which registers sample nodes/tools on startup).
-    """
     client = TestClient(main.app)
-
-    # Build a graph definition (node function names must match registered names in main)
     create_payload = {
         "nodes": [
             {"id": "extract", "fn_name": "extract_functions"},
@@ -117,14 +88,12 @@ def test_api_graph_create_run_state():
         "start_node_id": "extract"
     }
 
-    # Create graph via API
     resp = client.post("/graph/create", json=create_payload)
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert "graph_id" in data
     graph_id = data["graph_id"]
 
-    # Run graph via API with sample code
     initial_state = {"code_text": make_sample_code(todo_count=2, lines_per_fn=20)}
     run_resp = client.post("/graph/run", json={"graph_id": graph_id, "initial_state": initial_state})
     assert run_resp.status_code == 200, run_resp.text
@@ -135,12 +104,10 @@ def test_api_graph_create_run_state():
     assert "execution_log" in run_data
     final_state = run_data["final_state"]
 
-    # Check final_state shape and some expected fields
     assert isinstance(final_state, dict)
     assert "metadata" in final_state
     assert final_state["metadata"].get("finalized", True) is True or "quality_score" in final_state
 
-    # Get run state via API and ensure it matches
     get_resp = client.get(f"/graph/state/{run_id}")
     assert get_resp.status_code == 200, get_resp.text
     state_data = get_resp.json()
