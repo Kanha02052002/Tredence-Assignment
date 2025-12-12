@@ -1,12 +1,12 @@
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
-# Shared/mutable state model used by nodes (sample CodeReviewState)
+
 class StateModel(BaseModel):
     class Config:
         arbitrary_types_allowed = True
-        # allow mutation of fields
         allow_mutation = True
+
 
 class CodeReviewState(StateModel):
     code_text: str = Field("", description="Raw code to be reviewed")
@@ -16,14 +16,13 @@ class CodeReviewState(StateModel):
     quality_score: float = Field(0.0, description="Overall quality score (0-1)")
     metadata: Dict = Field(default_factory=dict)
 
-# API models
 class NodeDef(BaseModel):
     id: str
     fn_name: str
 
 class CreateGraphRequest(BaseModel):
     nodes: List[NodeDef]
-    edges: Dict[str, str]  # simple mapping as required
+    edges: Dict[str, str]
     start_node_id: str
 
 class CreateGraphResponse(BaseModel):
