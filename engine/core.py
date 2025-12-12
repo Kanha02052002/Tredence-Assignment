@@ -5,14 +5,12 @@ import uuid
 
 from engine.models import StateModel
 
+
 class GraphEngine:
     def __init__(self, tool_registry):
         self.tool_registry = tool_registry
-        # graph_id -> graph dict: {nodes: {node_id: fn_name}, edges: {...}, start_node_id: str}
         self._graphs: Dict[str, Dict[str, Any]] = {}
-        # node registry: fn_name -> callable
         self._node_registry: Dict[str, Callable] = {}
-        # run storage: run_id -> {"graph_id":..., "state":StateModel, "log":[], "status": "running"/"completed"/"failed"}
         self._runs: Dict[str, Dict[str, Any]] = {}
 
     def register_node(self, fn_name: str, fn: Callable):
@@ -22,7 +20,6 @@ class GraphEngine:
     def create_graph(self, nodes: Dict[str, str], edges: Dict[str, str], start_node_id: str, overwrite_if_exists: bool = True) -> str:
         graph_id = str(uuid.uuid4())
         if not overwrite_if_exists:
-            # ensure uniqueness (rare)
             while graph_id in self._graphs:
                 graph_id = str(uuid.uuid4())
 
@@ -62,7 +59,6 @@ class GraphEngine:
         if run_id is None:
             run_id = str(uuid.uuid4())
 
-        # Initialize run storage
         self._runs[run_id] = {
             "graph_id": graph_id,
             "state": state,
@@ -91,35 +87,34 @@ class GraphEngine:
                     raise RuntimeError(f"Function '{fn_name}' not registered in node registry")
 
                 logger.debug(f"Calling node function '{fn_name}' for node id '{current_node}'")
-                # Support both sync and async callables
+
                 if asyncio.iscoroutinefunction(fn):
                     result = await fn(state, self.tool_registry)
                 else:
-                    # run in threadpool if blocking
                     loop = asyncio.get_event_loop()
                     result = await loop.run_in_executor(None, fn, state, self.tool_registry)
 
-                # Node may optionally return a next_node_id to override edges
+                
                 next_node: Optional[str] = None
                 if isinstance(result, str) and result:
                     next_node = result
                     execution_log.append(f"Node '{current_node}' requested next node '{next_node}'")
                 elif result is None:
-                    # use edges mapping if available
                     next_node = edges.get(current_node)
                 elif isinstance(result, dict) and "next" in result:
                     next_node = result.get("next")
                 else:
-                    # default to edge mapping
                     next_node = edges.get(current_node)
 
                 logger.debug(f"Transitioning from '{current_node}' to '{next_node}'")
                 current_node = next_node
 
+            
             self._runs[run_id]["status"] = "completed"
             self._runs[run_id]["state"] = state
             self._runs[run_id]["log"] = execution_log
             logger.info(f"Run {run_id} completed in {steps} steps")
+            
             return state, execution_log
         except Exception as e:
             logger.exception("Execution failed: {}", e)
